@@ -8,9 +8,8 @@ on:
 
 jobs:
   build-java:
-
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v2
 
@@ -24,6 +23,8 @@ jobs:
 
     - name: Build with Gradle
       run: ./gradlew build
+    - name: Verify JAR exists
+      run: ls -l build/libs
 
     - name: Build and Push Docker Image
       uses: mr-smithers-excellent/docker-build-push@v6
