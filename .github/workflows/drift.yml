@@ -1,9 +1,9 @@
 name: Terraform Drift Detection
 
-on:
-  schedule:
-    - cron: "*/10 * * * *"   # every 30 minutes
-  workflow_dispatch: {}
+#on:
+ # schedule:
+  #  - cron: "*/10 * * * *"   # every 30 minutes
+  #workflow_dispatch: {}
 
 # Grant only what we need; required for artifact upload
 permissions:
