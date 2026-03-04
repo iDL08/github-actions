@@ -2,8 +2,13 @@ name: Terraform Drift Detection
 
 on:
   schedule:
-    - cron: "*/2 * * * *"   # every 30 min
+    - cron: "*/10 * * * *"   # every 30 minutes
   workflow_dispatch: {}
+
+# Grant only what we need; required for artifact upload
+permissions:
+  contents: read
+  actions: write
 
 jobs:
   drift:
@@ -11,31 +16,41 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+        uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
         run: terraform init -input=false
 
       - name: Terraform Drift Check
         id: drift
+        shell: bash
         run: |
+          set -e
           terraform plan -refresh-only -detailed-exitcode > drift.txt
-          echo "exit_code=$?" >> $GITHUB_OUTPUT
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
 
+      # Upload report only when drift (exit code 2)
       - name: Upload Drift Report
         if: steps.drift.outputs.exit_code == '2'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: drift-report
           path: drift.txt
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 6
 
-      - name: Send Slack Notification
+      - name: Send Slack Notification (drift)
         if: steps.drift.outputs.exit_code == '2'
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
         run: |
-          text=$(sed 's/"/\\"/g' drift.txt)
-          curl -X POST -H 'Content-type: application/json' \
-          --data "{\"text\":\":rotating_light: *Terraform Drift Detected!*\"}" \
-          ${{ secrets.SLACK_WEBHOOK }}
+          # Keep the Slack payload compact; post the artifact link from the job UI if needed
+          # If you want the full diff in Slack, uncomment the next two lines (note size limits):
+          # text=$(sed 's/"/\\"/g' drift.txt | head -c 35000)
+          # payload="{\"text\":\":rotating_light: *Terraform DRIFT Detected* in ${GITHUB_REPOSITORY}#${GITHUB_REF_NAME}\nRun: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\"}"
+          payload="{\"text\":\":rotating_light: *Terraform DRIFT Detected* in ${GITHUB_REPOSITORY} (${GITHUB_REF_NAME}). See job for *drift-report* artifact: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\"}"
+          curl -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK"
