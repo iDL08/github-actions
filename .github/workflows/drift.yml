@@ -1,0 +1,41 @@
+name: Terraform Drift Detection
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # every 30 min
+  workflow_dispatch: {}
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+
+      - name: Terraform Init
+        run: terraform init -input=false
+
+      - name: Terraform Drift Check
+        id: drift
+        run: |
+          terraform plan -refresh-only -detailed-exitcode > drift.txt
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+
+      - name: Upload Drift Report
+        if: steps.drift.outputs.exit_code == '2'
+        uses: actions/upload-artifact@v3
+        with:
+          name: drift-report
+          path: drift.txt
+
+      - name: Send Slack Notification
+        if: steps.drift.outputs.exit_code == '2'
+        run: |
+          text=$(sed 's/"/\\"/g' drift.txt)
+          curl -X POST -H 'Content-type: application/json' \
+          --data "{\"text\":\":rotating_light: *Terraform Drift Detected!*\"}" \
+          ${{ secrets.SLACK_WEBHOOK }}
